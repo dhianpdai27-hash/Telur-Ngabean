@@ -105,16 +105,44 @@
 </nav>
 
 <script>
+    <script>
     const { jsPDF } = window.jspdf;
-    let db_trx = JSON.parse(localStorage.getItem('db_final_v21_trx')) || [];
-    let db_biaya = JSON.parse(localStorage.getItem('db_final_v21_biaya')) || [];
+    
+    // --- 1. GANTI BAGIAN INI (URL API ANDA) ---
+    const API_URL = "https://script.google.com/macros/s/AKfycbwo5LL1CLPwzttDwX-AV4HpsQO3FQjz_QIZoalFZCUTBZUE71KvzjCTMMvGgStZqeQ4/exec"; 
 
-    window.onload = () => {
-        document.getElementById('tgl-info').innerText = new Date().toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric'});
-        updateDashboard();
-        renderBiaya();
+    let db_trx = [];
+    let db_biaya = [];
+
+    // Fungsi Loading agar user tahu data sedang dikirim
+    const loading = (show) => {
+        document.body.style.opacity = show ? "0.6" : "1";
+        document.body.style.pointerEvents = show ? "none" : "auto";
     };
 
+    // --- 2. GANTI window.onload LAMA DENGAN INI ---
+    window.onload = async () => {
+        document.getElementById('tgl-info').innerText = new Date().toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric'});
+        await muatDataDariCloud();
+    };
+
+    async function muatDataDariCloud() {
+        try {
+            loading(true);
+            const res = await fetch(API_URL);
+            const data = await res.json();
+            db_trx = data.db_trx || [];
+            db_biaya = data.db_biaya || [];
+            updateDashboard();
+            renderBiaya();
+        } catch (err) {
+            alert("Gagal koneksi ke server!");
+        } finally {
+            loading(false);
+        }
+    }
+
+    // --- 3. FUNGSI NAV, HITUNG, DASHBOARD TETAP SAMA ---
     function nav(s, el) {
         document.querySelectorAll('.tab').forEach(x => x.style.display = 'none');
         document.getElementById('tab-' + s).style.display = 'block';
@@ -131,85 +159,76 @@
 
     function updateDashboard() {
         const h = new Date().toISOString().slice(0,10);
-        const o = db_trx.filter(x => x.tgl.startsWith(h)).reduce((a,b) => a + b.total, 0);
-        const b = db_biaya.filter(x => x.tgl.startsWith(h)).reduce((a,b) => a + b.nominal, 0);
+        const o = db_trx.filter(x => x.tgl.startsWith(h)).reduce((a,b) => a + (Number(b.total) || 0), 0);
+        const b = db_biaya.filter(x => x.tgl.startsWith(h)).reduce((a,b) => a + (Number(b.nominal) || 0), 0);
         document.getElementById('dash-saldo').innerText = "Rp " + (o - b).toLocaleString();
     }
 
-    // FUNGSI BUAT PDF (PENGGANTI PRINT YANG GAGAL)
     function buatPDF(judul, isiTeks) {
-        const doc = new jsPDF({ unit: 'mm', format: [80, 150] }); // Ukuran kertas thermal
+        const doc = new jsPDF({ unit: 'mm', format: [80, 150] });
         doc.setFont("courier", "bold");
         doc.text("BUMDes NGABEHI BERKAH", 40, 10, { align: "center" });
         doc.setFontSize(10);
         doc.text(new Date().toLocaleString(), 40, 16, { align: "center" });
         doc.text("--------------------------", 40, 22, { align: "center" });
-        
         let y = 30;
-        isiTeks.forEach(line => {
-            doc.text(line, 5, y);
-            y += 7;
-        });
-
+        isiTeks.forEach(line => { doc.text(line, 5, y); y += 7; });
         doc.text("--------------------------", 40, y+5, { align: "center" });
-        doc.text("Terima Kasih", 40, y+12, { align: "center" });
         doc.save(`${judul}.pdf`);
     }
 
-    function simpanTrx() {
+    // --- 4. GANTI simpanTrx MENJADI ASYNC (KIRIM KE SHEET) ---
+    async function simpanTrx() {
         const adm = document.getElementById('admin').value || 'Petugas';
         const kg = Number(document.getElementById('berat').value);
         const hrg = Number(document.getElementById('harga').value);
         if(!kg) return alert("Isi Berat!");
 
         const item = { id: Date.now(), tgl: new Date().toISOString(), adm, kg, hrg, total: kg * hrg };
-        db_trx.push(item);
-        localStorage.setItem('db_final_v21_trx', JSON.stringify(db_trx));
-
-        const rincian = [
-            `Admin  : ${item.adm}`,
-            `Berat  : ${item.kg} Kg`,
-            `Harga  : Rp ${item.hrg.toLocaleString()}`,
-            ` `,
-            `TOTAL  : Rp ${item.total.toLocaleString()}`
-        ];
-        buatPDF("Nota_BUMDes", rincian);
         
-        document.getElementById('berat').value = ""; hitung(); updateDashboard();
+        try {
+            loading(true);
+            const res = await fetch(API_URL, {
+                method: 'POST',
+                body: JSON.stringify({ action: "add_trx", data: item })
+            });
+            const result = await res.json();
+            if(result.status === "success") {
+                db_trx.push(item);
+                buatPDF("Nota_BUMDes", [`Admin : ${item.adm}`, `Berat : ${item.kg} Kg`, `Total : Rp ${item.total.toLocaleString()}`]);
+                document.getElementById('berat').value = ""; hitung(); updateDashboard();
+            }
+        } catch (e) { alert("Gagal Simpan ke Cloud!"); }
+        finally { loading(false); }
     }
 
-    function simpanBiaya() {
+    // --- 5. GANTI simpanBiaya MENJADI ASYNC ---
+    async function simpanBiaya() {
         const ket = document.getElementById('ket-biaya').value;
         const nom = Number(document.getElementById('nom-biaya').value);
         if(!nom) return alert("Isi nominal!");
-        db_biaya.push({ id: Date.now(), tgl: new Date().toISOString(), ket, nominal: nom });
-        localStorage.setItem('db_final_v21_biaya', JSON.stringify(db_biaya));
-        document.getElementById('ket-biaya').value = ""; document.getElementById('nom-biaya').value = "";
-        renderBiaya(); updateDashboard();
+        
+        const dataBiaya = { id: Date.now(), tgl: new Date().toISOString(), ket, nominal: nom };
+        
+        try {
+            loading(true);
+            const res = await fetch(API_URL, {
+                method: 'POST',
+                body: JSON.stringify({ action: "add_biaya", data: dataBiaya })
+            });
+            const result = await res.json();
+            if(result.status === "success") {
+                db_biaya.push(dataBiaya);
+                document.getElementById('ket-biaya').value = ""; document.getElementById('nom-biaya').value = "";
+                renderBiaya(); updateDashboard();
+            }
+        } catch (e) { alert("Gagal Simpan Biaya!"); }
+        finally { loading(false); }
     }
 
-    function renderBiaya() {
-        document.getElementById('list-biaya-full').innerHTML = db_biaya.slice().reverse().map(b => `
-            <div class="app-card d-flex justify-content-between py-2 border-end border-danger border-4">
-                <div><b class="small text-uppercase">${b.ket}</b><br><small class="text-muted">${b.tgl.slice(0,10)}</small></div>
-                <b class="text-danger">Rp ${b.nominal.toLocaleString()}</b>
-            </div>`).join('') || '<p class="text-center small py-3">Kosong</p>';
-    }
-
-    function renderRiwayat() {
-        document.getElementById('list-riwayat').innerHTML = db_trx.slice().reverse().map(x => `
-            <div class="app-card shadow-sm">
-                <div class="d-flex justify-content-between border-bottom pb-2 mb-2">
-                    <div><b class="small text-uppercase">${x.adm}</b><br><small class="text-muted">${x.tgl.replace('T',' ').slice(0,16)}</small></div>
-                    <b class="text-primary">Rp ${x.total.toLocaleString()}</b>
-                </div>
-                <div class="d-flex justify-content-between small fw-bold text-secondary">
-                    <span>${x.kg} Kg</span>
-                    <span>@ Rp ${x.hrg.toLocaleString()}</span>
-                </div>
-            </div>`).join('') || '<p class="text-center small py-5">Kosong</p>';
-    }
-
+    // Sisanya (renderBiaya, renderRiwayat, updateLaporan, exportExcel, importExcel) 
+    // biarkan seperti kode asli Anda di bawahnya.
+</script>
     function updateLaporan() {
         const d = document.getElementById('tgl-lap').value;
         const m = document.getElementById('bln-lap').value;
