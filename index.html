@@ -105,22 +105,17 @@
 </nav>
 
 <script>
-    <script>
     const { jsPDF } = window.jspdf;
-    
-    // --- 1. GANTI BAGIAN INI (URL API ANDA) ---
     const API_URL = "https://script.google.com/macros/s/AKfycbwo5LL1CLPwzttDwX-AV4HpsQO3FQjz_QIZoalFZCUTBZUE71KvzjCTMMvGgStZqeQ4/exec"; 
 
     let db_trx = [];
     let db_biaya = [];
 
-    // Fungsi Loading agar user tahu data sedang dikirim
     const loading = (show) => {
         document.body.style.opacity = show ? "0.6" : "1";
         document.body.style.pointerEvents = show ? "none" : "auto";
     };
 
-    // --- 2. GANTI window.onload LAMA DENGAN INI ---
     window.onload = async () => {
         document.getElementById('tgl-info').innerText = new Date().toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric'});
         await muatDataDariCloud();
@@ -135,6 +130,7 @@
             db_biaya = data.db_biaya || [];
             updateDashboard();
             renderBiaya();
+            renderRiwayat();
         } catch (err) {
             alert("Gagal koneksi ke server!");
         } finally {
@@ -142,7 +138,6 @@
         }
     }
 
-    // --- 3. FUNGSI NAV, HITUNG, DASHBOARD TETAP SAMA ---
     function nav(s, el) {
         document.querySelectorAll('.tab').forEach(x => x.style.display = 'none');
         document.getElementById('tab-' + s).style.display = 'block';
@@ -159,8 +154,8 @@
 
     function updateDashboard() {
         const h = new Date().toISOString().slice(0,10);
-        const o = db_trx.filter(x => x.tgl.startsWith(h)).reduce((a,b) => a + (Number(b.total) || 0), 0);
-        const b = db_biaya.filter(x => x.tgl.startsWith(h)).reduce((a,b) => a + (Number(b.nominal) || 0), 0);
+        const o = db_trx.filter(x => x.tgl && x.tgl.startsWith(h)).reduce((a,b) => a + (Number(b.total) || 0), 0);
+        const b = db_biaya.filter(x => x.tgl && x.tgl.startsWith(h)).reduce((a,b) => a + (Number(b.nominal) || 0), 0);
         document.getElementById('dash-saldo').innerText = "Rp " + (o - b).toLocaleString();
     }
 
@@ -177,7 +172,6 @@
         doc.save(`${judul}.pdf`);
     }
 
-    // --- 4. GANTI simpanTrx MENJADI ASYNC (KIRIM KE SHEET) ---
     async function simpanTrx() {
         const adm = document.getElementById('admin').value || 'Petugas';
         const kg = Number(document.getElementById('berat').value);
@@ -202,14 +196,11 @@
         finally { loading(false); }
     }
 
-    // --- 5. GANTI simpanBiaya MENJADI ASYNC ---
     async function simpanBiaya() {
         const ket = document.getElementById('ket-biaya').value;
         const nom = Number(document.getElementById('nom-biaya').value);
         if(!nom) return alert("Isi nominal!");
-        
         const dataBiaya = { id: Date.now(), tgl: new Date().toISOString(), ket, nominal: nom };
-        
         try {
             loading(true);
             const res = await fetch(API_URL, {
@@ -226,20 +217,39 @@
         finally { loading(false); }
     }
 
-    // Sisanya (renderBiaya, renderRiwayat, updateLaporan, exportExcel, importExcel) 
-    // biarkan seperti kode asli Anda di bawahnya.
-</script>
+    function renderBiaya() {
+        document.getElementById('list-biaya-full').innerHTML = db_biaya.slice().reverse().map(b => `
+            <div class="app-card d-flex justify-content-between py-2 border-end border-danger border-4">
+                <div><b class="small text-uppercase">${b.ket}</b><br><small class="text-muted">${b.tgl ? b.tgl.slice(0,10) : '-'}</small></div>
+                <b class="text-danger">Rp ${Number(b.nominal).toLocaleString()}</b>
+            </div>`).join('') || '<p class="text-center small py-3">Kosong</p>';
+    }
+
+    function renderRiwayat() {
+        document.getElementById('list-riwayat').innerHTML = db_trx.slice().reverse().map(x => `
+            <div class="app-card shadow-sm">
+                <div class="d-flex justify-content-between border-bottom pb-2 mb-2">
+                    <div><b class="small text-uppercase">${x.adm}</b><br><small class="text-muted">${x.tgl ? x.tgl.replace('T',' ').slice(0,16) : '-'}</small></div>
+                    <b class="text-primary">Rp ${Number(x.total).toLocaleString()}</b>
+                </div>
+                <div class="d-flex justify-content-between small fw-bold text-secondary">
+                    <span>${x.kg} Kg</span>
+                    <span>@ Rp ${Number(x.hrg).toLocaleString()}</span>
+                </div>
+            </div>`).join('') || '<p class="text-center small py-5">Kosong</p>';
+    }
+
     function updateLaporan() {
         const d = document.getElementById('tgl-lap').value;
         const m = document.getElementById('bln-lap').value;
         if(d) {
-            const o = db_trx.filter(x => x.tgl.startsWith(d)).reduce((a,b)=>a+b.total,0);
-            const b = db_biaya.filter(x => x.tgl.startsWith(d)).reduce((a,b)=>a+b.nominal,0);
+            const o = db_trx.filter(x => x.tgl && x.tgl.startsWith(d)).reduce((a,b)=>a+(Number(b.total)||0),0);
+            const b = db_biaya.filter(x => x.tgl && x.tgl.startsWith(d)).reduce((a,b)=>a+(Number(b.nominal)||0),0);
             document.getElementById('res-harian').innerHTML = `Laba: Rp ${(o-b).toLocaleString()}`;
         }
         if(m) {
-            const oM = db_trx.filter(x => x.tgl.startsWith(m)).reduce((a,b)=>a+b.total,0);
-            const bM = db_biaya.filter(x => x.tgl.startsWith(m)).reduce((a,b)=>a+b.nominal,0);
+            const oM = db_trx.filter(x => x.tgl && x.tgl.startsWith(m)).reduce((a,b)=>a+(Number(b.total)||0),0);
+            const bM = db_biaya.filter(x => x.tgl && x.tgl.startsWith(m)).reduce((a,b)=>a+(Number(b.nominal)||0),0);
             document.getElementById('res-bulanan').innerHTML = `Laba: Rp ${(oM-bM).toLocaleString()}`;
         }
     }
@@ -264,14 +274,12 @@
             const wb = XLSX.read(new Uint8Array(e.target.result), {type: 'array'});
             db_trx = XLSX.utils.sheet_to_json(wb.Sheets.Transaksi) || [];
             db_biaya = XLSX.utils.sheet_to_json(wb.Sheets.Biaya) || [];
-            localStorage.setItem('db_final_v21_trx', JSON.stringify(db_trx));
-            localStorage.setItem('db_final_v21_biaya', JSON.stringify(db_biaya));
             alert("Berhasil!"); location.reload();
         };
         r.readAsArrayBuffer(f);
     }
 
-    function resetData() { if(confirm("Hapus semua?")) { localStorage.clear(); location.reload(); } }
+    function resetData() { if(confirm("Hapus semua data di cloud tidak bisa lewat sini. Silakan hapus manual di Google Sheet.")) { return; } }
 </script>
 </body>
 </html>
