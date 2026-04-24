@@ -234,12 +234,67 @@
     }
 
     function renderBiaya() {
-        document.getElementById('list-biaya-full').innerHTML = db_biaya.slice().reverse().map(b => `
-            <div class="app-card d-flex justify-content-between py-2 border-end border-danger border-4">
-                <div><b class="small text-uppercase">${b.ket}</b><br><small class="text-muted">${b.tgl ? b.tgl.slice(0,10) : '-'}</small></div>
-                <b class="text-danger">Rp ${Number(b.nominal).toLocaleString()}</b>
-            </div>`).join('') || '<p class="text-center small py-3">Kosong</p>';
-    }
+    document.getElementById('list-biaya-full').innerHTML = db_biaya.slice().reverse().map(b => `
+        <div class="app-card border-end border-danger border-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <b class="small text-uppercase">${b.ket}</b><br>
+                    <small class="text-muted">${b.tgl ? b.tgl.slice(0,10) : '-'}</small>
+                </div>
+                <div class="text-end">
+                    <b class="text-danger">Rp ${Number(b.nominal).toLocaleString()}</b><br>
+                    <button onclick="editBiaya(${b.id}, '${b.ket}', ${b.nominal})" class="btn btn-link btn-sm p-0 me-2 text-primary">Edit</button>
+                    <button onclick="hapusBiaya(${b.id})" class="btn btn-link btn-sm p-0 text-danger">Hapus</button>
+                </div>
+            </div>
+        </div>`).join('') || '<p class="text-center small py-3">Kosong</p>';
+}
+
+// FUNGSI UNTUK HAPUS
+async function hapusBiaya(id) {
+    if(!confirm("Yakin ingin menghapus biaya ini?")) return;
+    try {
+        loading(true);
+        const res = await fetch(API_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: "delete_biaya", data: { id: id } })
+        });
+        if(res.ok) {
+            db_biaya = db_biaya.filter(b => b.id != id); // Update array lokal
+            renderBiaya();
+            updateDashboard();
+        }
+    } catch (e) { alert("Gagal menghapus!"); }
+    finally { loading(false); }
+}
+
+// FUNGSI UNTUK EDIT
+async function editBiaya(id, ketLama, nomLama) {
+    const ketBaru = prompt("Ubah Keterangan:", ketLama);
+    const nomBaru = prompt("Ubah Nominal:", nomLama);
+    
+    if (ketBaru === null || nomBaru === null) return; // Batal jika klik cancel
+
+    try {
+        loading(true);
+        const dataEdit = { id: id, ket: ketBaru, nominal: Number(nomBaru) };
+        const res = await fetch(API_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: "edit_biaya", data: dataEdit })
+        });
+        if(res.ok) {
+            // Update data di array lokal
+            const index = db_biaya.findIndex(b => b.id == id);
+            if (index !== -1) {
+                db_biaya[index].ket = ketBaru;
+                db_biaya[index].nominal = Number(nomBaru);
+            }
+            renderBiaya();
+            updateDashboard();
+        }
+    } catch (e) { alert("Gagal mengedit!"); }
+    finally { loading(false); }
+}
 
     function renderRiwayat() {
         document.getElementById('list-riwayat').innerHTML = db_trx.slice().reverse().map(x => `
