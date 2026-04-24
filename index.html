@@ -159,43 +159,59 @@
         document.getElementById('dash-saldo').innerText = "Rp " + (o - b).toLocaleString();
     }
 
-    function buatPDF(judul, isiTeks) {
-        const doc = new jsPDF({ unit: 'mm', format: [80, 150] });
-        doc.setFont("courier", "bold");
-        doc.text("BUMDes NGABEHI BERKAH", 40, 10, { align: "center" });
-        doc.setFontSize(10);
-        doc.text(new Date().toLocaleString(), 40, 16, { align: "center" });
-        doc.text("--------------------------", 40, 22, { align: "center" });
-        let y = 30;
-        isiTeks.forEach(line => { doc.text(line, 5, y); y += 7; });
-        doc.text("--------------------------", 40, y+5, { align: "center" });
-        doc.save(`${judul}.pdf`);
-    }
+   function cetakRawBT(item) {
+    // Format struk khusus printer thermal 58mm (32 karakter)
+    let struk = "   BUMDes NGABEHI BERKAH\n";
+    struk += "================================\n";
+    struk += "Tgl  : " + new Date().toLocaleString('id-ID') + "\n";
+    struk += "Adm  : " + item.adm + "\n";
+    struk += "--------------------------------\n";
+    struk += "BERAT      : " + item.kg.toString().padEnd(5) + " Kg\n";
+    struk += "HARGA      : Rp " + item.hrg.toLocaleString().padStart(10) + "\n";
+    struk += "--------------------------------\n";
+    struk += "TOTAL      : Rp " + item.total.toLocaleString().padStart(10) + "\n";
+    struk += "================================\n";
+    struk += "         TERIMA KASIH\n";
+    struk += "    Laporan Berhasil Disimpan\n\n\n";
+
+    // Kirim perintah ke aplikasi RawBT melalui URL Scheme
+    // btoa() digunakan untuk mengonversi teks ke Base64
+    window.location.href = "rawbt:base64," + btoa(struk);
+}
 
     async function simpanTrx() {
-        const adm = document.getElementById('admin').value || 'Petugas';
-        const kg = Number(document.getElementById('berat').value);
-        const hrg = Number(document.getElementById('harga').value);
-        if(!kg) return alert("Isi Berat!");
+    const adm = document.getElementById('admin').value || 'Petugas';
+    const kg = Number(document.getElementById('berat').value);
+    const hrg = Number(document.getElementById('harga').value);
+    if(!kg) return alert("Isi Berat!");
 
-        const item = { id: Date.now(), tgl: new Date().toISOString(), adm, kg, hrg, total: kg * hrg };
+    const item = { id: Date.now(), tgl: new Date().toISOString(), adm, kg, hrg, total: kg * hrg };
+    
+    try {
+        loading(true);
+        const res = await fetch(API_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: "add_trx", data: item })
+        });
+        const result = await res.json();
         
-        try {
-            loading(true);
-            const res = await fetch(API_URL, {
-                method: 'POST',
-                body: JSON.stringify({ action: "add_trx", data: item })
-            });
-            const result = await res.json();
-            if(result.status === "success") {
-                db_trx.push(item);
-                buatPDF("Nota_BUMDes", [`Admin : ${item.adm}`, `Berat : ${item.kg} Kg`, `Total : Rp ${item.total.toLocaleString()}`]);
-                document.getElementById('berat').value = ""; hitung(); updateDashboard();
-            }
-        } catch (e) { alert("Gagal Simpan ke Cloud!"); }
-        finally { loading(false); }
-    }
+        if(result.status === "success") {
+            db_trx.push(item);
+            
+            // --- INI PERUBAHANNYA ---
+            cetakRawBT(item); // Panggil RawBT, bukan PDF
+            // ------------------------
 
+            document.getElementById('berat').value = ""; 
+            hitung(); 
+            updateDashboard();
+        }
+    } catch (e) { 
+        alert("Gagal Simpan ke Cloud!"); 
+    } finally { 
+        loading(false); 
+    }
+}
     async function simpanBiaya() {
         const ket = document.getElementById('ket-biaya').value;
         const nom = Number(document.getElementById('nom-biaya').value);
