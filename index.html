@@ -152,12 +152,23 @@
         document.getElementById('total-display').innerText = "Rp " + t.toLocaleString();
     }
 
-    function updateDashboard() {
-        const h = new Date().toISOString().slice(0,10);
-        const o = db_trx.filter(x => x.tgl && x.tgl.startsWith(h)).reduce((a,b) => a + (Number(b.total) || 0), 0);
-        const b = db_biaya.filter(x => x.tgl && x.tgl.startsWith(h)).reduce((a,b) => a + (Number(b.nominal) || 0), 0);
-        document.getElementById('dash-saldo').innerText = "Rp " + (o - b).toLocaleString();
-    }
+   function updateDashboard() {
+    // Ambil tanggal hari ini dalam format dd/mm/yyyy
+    const hariIni = new Date().toLocaleDateString('id-ID'); 
+
+    // Filter transaksi yang diawali dengan tanggal hari ini
+    const totalMasuk = db_trx
+        .filter(x => x.tgl && x.tgl.toString().startsWith(hariIni))
+        .reduce((a, b) => a + (Number(b.total) || 0), 0);
+
+    // Filter biaya yang diawali dengan tanggal hari ini
+    const totalKeluar = db_biaya
+        .filter(x => x.tgl && x.tgl.toString().startsWith(hariIni))
+        .reduce((a, b) => a + (Number(b.nominal) || 0), 0);
+
+    // Update tampilan saldo bersih
+    document.getElementById('dash-saldo').innerText = "Rp " + (totalMasuk - totalKeluar).toLocaleString();
+}
 
    function cetakRawBT(item) {
     // Format struk khusus printer thermal 58mm (32 karakter)
